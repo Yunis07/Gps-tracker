@@ -30,46 +30,77 @@ let trackingStarted = false;
 let lastUpdate = 0;
 let myLat = 0, myLng = 0;
 
-// Initialize MapLibre map with vector tiles for true street highlighting
+// Theme toggle function
+function toggleTheme() {
+    const body = document.body;
+    const toggleBtn = document.querySelector('.theme-toggle');
+    if (body.getAttribute('data-theme') === 'light') {
+        body.setAttribute('data-theme', 'dark');
+        toggleBtn.textContent = '☀️ Light Mode';
+    } else {
+        body.setAttribute('data-theme', 'light');
+        toggleBtn.textContent = '🌙 Dark Mode';
+    }
+}
+
+// Initialize MapLibre map with MapTiler key for detailed streets/buildings/labels
 window.onload = function() {
+    const MAPTILER_KEY = '0ji8c4Ac7rZvNXeSUoKl';  // Provided key
     map = new maplibregl.Map({
         container: 'map',
-        style: 'https://demotiles.maplibre.org/style.json',  // Free vector style with roads
+        style: `https://api.maptiler.com/maps/streets/style.json?key=${MAPTILER_KEY}`,  // Detailed Google Maps-like style
         center: [-0.09, 51.505],
         zoom: 13
     });
     map.on('load', () => {
-        console.log('MapLibre map loaded with vector roads');
+        console.log('MapLibre map loaded with detailed streets, buildings, and labels');
         // Add default marker
         const defaultMarker = new maplibregl.Marker().setLngLat([-0.09, 51.505]).setPopup(new maplibregl.Popup().setHTML('Start tracking to see locations.')).addTo(map);
         markers.push(defaultMarker);
+        
+        // Enable interactivity: Click on map features (streets, buildings, etc.)
+        map.on('click', (e) => {
+            const features = map.queryRenderedFeatures(e.point);
+            if (features.length) {
+                const feature = features[0];
+                new maplibregl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(`<strong>${feature.layer.id}</strong>: ${feature.properties.name || 'Interactive Feature'}`)
+                    .addTo(map);
+            }
+        });
     });
 };
 
-// Start tracking
+// Start tracking and zoom to location
 function startTracking() {
     myName = document.getElementById('name').value.trim();
     if (!myName) return alert('Enter your name.');
     if (trackingStarted) return;
     if (!navigator.geolocation) return alert('GPS not supported.');
     
+    document.getElementById('tracking-spinner').style.display = 'inline-block';
     navigator.geolocation.getCurrentPosition((position) => {
         myLat = position.coords.latitude;
         myLng = position.coords.longitude;
+        // Smooth zoom to location
+        map.flyTo({ center: [myLng, myLat], zoom: 15, duration: 2000 });
         updateLocalPosition(myLat, myLng);
         watchId = navigator.geolocation.watchPosition((pos) => {
             myLat = pos.coords.latitude;
             myLng = pos.coords.longitude;
             const now = Date.now();
-            if (now - lastUpdate > 10000) {  // Update every 10s for efficiency
+            if (now - lastUpdate > 10000) {  // Efficient real-time updates
                 updateLocalPosition(myLat, myLng);
                 lastUpdate = now;
             }
         }, (error) => alert('GPS error: ' + error.message), { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 });
         trackingStarted = true;
-        document.getElementById('status').innerText = `Tracking ${myName}. Real-time updates active.`;
+        document.getElementById('status').innerText = `Tracking ${myName}. Map zoomed to your location.`;
+        document.getElementById('tracking-spinner').style.display = 'none';
     }, (error) => {
         alert('Location denied. Enable in browser settings.');
+        document.getElementById('tracking-spinner').style.display = 'none';
     });
 }
 
@@ -132,7 +163,7 @@ function startRoomTracking() {
             li.textContent = `${name}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`;
             deviceList.appendChild(li);
         });
-        updateRoutes(locations, keys);  // Real-time route updates
+        updateRoutes(locations, keys);  // Real-time path highlighting
     });
 
     onChildAdded(ref(database, roomCode + '/locations'), (snapshot) => {
@@ -143,7 +174,7 @@ function startRoomTracking() {
     });
 }
 
-// Update routes with real-time street highlighting
+// Update routes with efficient shortest path highlighting
 async function updateRoutes(locations, keys) {
     // Clear old routes
     routes.forEach(route => route.remove());
@@ -166,53 +197,11 @@ async function updateRoutes(locations, keys) {
                         properties: {},
                         geometry: { type: 'LineString', coordinates }
                     };
-                    map.addSource(`route-${keys[i]}-${keys[j]}`, { type: 'geojson', data: route });
+                    const routeId = `route-${keys[i]}-${keys[j]}`;
+                    map.addSource(routeId, { type: 'geojson', data: route });
                     map.addLayer({
-                        id: `route-${keys[i]}-${keys[j]}`,
+                        id: routeId,
                         type: 'line',
-                        source: `route-${keys[i]}-${keys[j]}`,
+                        source: routeId,
                         layout: { 'line-join': 'round', 'line-cap': 'round' },
-                        paint: { 'line-color': colors[colorIndex % colors.length], 'line-width': 8, 'line-opacity': 0.9 }
-                    });
-                    routes.push({
-                        remove: () => {
-                            if (map.getLayer(`route-${keys[i]}-${keys[j]}`)) map.removeLayer(`route-${keys[i]}-${keys[j]}`);
-                            if (map.getSource(`route-${keys[i]}-${keys[j]}`)) map.removeSource(`route-${keys[i]}-${keys[j]}`);
-                        }
-                    });
-                    colorIndex++;
-                }
-            } catch (error) {
-                console.error('Route update failed:', error);
-            }
-        }
-    }
-}
-
-// Clear routes
-function clearRoutes() {
-    routes.forEach(route => route.remove());
-    routes = [];
-    alert('Routes cleared.');
-}
-
-// Leave room
-function leaveRoom() {
-    if (watchId) navigator.geolocation.clearWatch(watchId);
-    if (roomCode && navigator.onLine) remove(ref(database, roomCode + '/locations/' + myId));
-    roomCode = null;
-    trackingStarted = false;
-    document.getElementById('status').innerText = 'Left room.';
-    document.getElementById('devices').innerHTML = '';
-    markers.forEach(marker => marker.remove());
-    routes.forEach(route => route.remove());
-    markers = [];
-    routes = [];
-}
-
-// Expose functions
-window.startTracking = startTracking;
-window.createRoom = createRoom;
-window.joinRoom = joinRoom;
-window.leaveRoom = leaveRoom;
-window.clearRoutes = clearRoutes;
+                        paint
