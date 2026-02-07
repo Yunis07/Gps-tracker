@@ -320,29 +320,4 @@ async function updateRoutes(locations, keys) {
                 if (!response.ok) throw new Error(`OSRM failed: ${response.status}`);
                 const data = await response.json();
                 if (data.routes && data.routes[0]) {
-                    const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0], coord[1]]);
-                    const distanceKm = (data.routes[0].distance / 1000).toFixed(2);
-                    const durationMin = (data.routes[0].duration / 60).toFixed(1);
-                    const route = { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates } };
-                    const routeId = `route-${keys[i]}-${keys[j]}`;
-                    if (map.getLayer(routeId)) map.removeLayer(routeId);
-                    if (map.getSource(routeId)) map.removeSource(routeId);
-                    map.addSource(routeId, { type: 'geojson', data: route });
-                    map.addLayer({
-                        id: routeId,
-                        type: 'line',
-                        source: routeId,
-                        layout: { 'line-join': 'round', 'line-cap': 'round' },
-                        paint: { 'line-color': colors[colorIndex % colors.length], 'line-width': 8, 'line-opacity': 0.9 }
-                    });
-                    routes.push({
-                        remove: () => {
-                            if (map.getLayer(routeId)) map.removeLayer(routeId);
-                            if (map.getSource(routeId)) map.removeSource(routeId);
-                        }
-                    });
-                    console.log('Route added:', routeId);
-                    // Add distance/ETA
-                    const deviceList = document.getElementById('devices');
-                    const li = deviceList.querySelector(`li:nth-child(${j + 1})`);
-                    if (li) li.textContent
+                    const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0
