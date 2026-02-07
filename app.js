@@ -30,46 +30,36 @@ let trackingStarted = false;
 let lastUpdate = 0;
 let myLat = 0, myLng = 0;
 
-// Theme toggle function
-function toggleTheme() {
-    const body = document.body;
-    const toggleBtn = document.querySelector('.theme-toggle');
-    if (body.getAttribute('data-theme') === 'light') {
-        body.setAttribute('data-theme', 'dark');
-        toggleBtn.textContent = '☀️ Light Mode';
-    } else {
-        body.setAttribute('data-theme', 'light');
-        toggleBtn.textContent = '🌙 Dark Mode';
-    }
-}
-
-// Initialize MapLibre map with MapTiler key for detailed streets/buildings/labels
+// Initialize MapLibre map with new MapTiler key and light streets style
 window.onload = function() {
-    const MAPTILER_KEY = '0ji8c4Ac7rZvNXeSUoKl';  // Provided key
-    map = new maplibregl.Map({
-        container: 'map',
-        style: `https://api.maptiler.com/maps/streets/style.json?key=${MAPTILER_KEY}`,  // Detailed Google Maps-like style
-        center: [-0.09, 51.505],
-        zoom: 13
-    });
-    map.on('load', () => {
-        console.log('MapLibre map loaded with detailed streets, buildings, and labels');
-        // Add default marker
-        const defaultMarker = new maplibregl.Marker().setLngLat([-0.09, 51.505]).setPopup(new maplibregl.Popup().setHTML('Start tracking to see locations.')).addTo(map);
-        markers.push(defaultMarker);
-        
-        // Enable interactivity: Click on map features (streets, buildings, etc.)
-        map.on('click', (e) => {
-            const features = map.queryRenderedFeatures(e.point);
-            if (features.length) {
-                const feature = features[0];
-                new maplibregl.Popup()
-                    .setLngLat(e.lngLat)
-                    .setHTML(`<strong>${feature.layer.id}</strong>: ${feature.properties.name || 'Interactive Feature'}`)
-                    .addTo(map);
-            }
+    const MAPTILER_KEY = 'DDsrWRPoPOfwJ9ISsEV2';  // New key
+    try {
+        map = new maplibregl.Map({
+            container: 'map',
+            style: `https://api.maptiler.com/maps/streets/style.json?key=${MAPTILER_KEY}`,  // Light streets style with buildings/labels
+            center: [-0.09, 51.505],
+            zoom: 13
         });
-    });
+        map.on('load', () => {
+            console.log('Map loaded successfully');
+            const defaultMarker = new maplibregl.Marker().setLngLat([-0.09, 51.505]).setPopup(new maplibregl.Popup().setHTML('Start tracking.')).addTo(map);
+            markers.push(defaultMarker);
+            map.on('click', (e) => {
+                const features = map.queryRenderedFeatures(e.point);
+                if (features.length) {
+                    const feature = features[0];
+                    new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<strong>${feature.properties.name || 'Feature'}</strong>`).addTo(map);
+                }
+            });
+        });
+        map.on('error', (e) => {
+            console.error('Map error:', e);
+            alert('Map failed to load. Check key or internet.');
+        });
+    } catch (error) {
+        console.error('Map init error:', error);
+        alert('Map library failed. Refresh page.');
+    }
 };
 
 // Start tracking and zoom to location
@@ -83,30 +73,29 @@ function startTracking() {
     navigator.geolocation.getCurrentPosition((position) => {
         myLat = position.coords.latitude;
         myLng = position.coords.longitude;
-        // Smooth zoom to location
         map.flyTo({ center: [myLng, myLat], zoom: 15, duration: 2000 });
         updateLocalPosition(myLat, myLng);
         watchId = navigator.geolocation.watchPosition((pos) => {
             myLat = pos.coords.latitude;
             myLng = pos.coords.longitude;
             const now = Date.now();
-            if (now - lastUpdate > 10000) {  // Efficient real-time updates
+            if (now - lastUpdate > 10000) {
                 updateLocalPosition(myLat, myLng);
                 lastUpdate = now;
             }
         }, (error) => alert('GPS error: ' + error.message), { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 });
         trackingStarted = true;
-        document.getElementById('status').innerText = `Tracking ${myName}. Map zoomed to your location.`;
+        document.getElementById('status').innerText = `Tracking ${myName}.`;
         document.getElementById('tracking-spinner').style.display = 'none';
     }, (error) => {
-        alert('Location denied. Enable in browser settings.');
+        alert('Location denied.');
         document.getElementById('tracking-spinner').style.display = 'none';
     });
 }
 
 // Update local position
 function updateLocalPosition(lat, lng) {
-    if (markers.length === 1) {  // Replace default marker
+    if (markers.length === 1) {
         markers[0].remove();
         markers = [];
     }
@@ -132,13 +121,13 @@ function createRoom() {
 // Join room
 function joinRoom() {
     if (!trackingStarted) return alert('Start tracking first.');
-    if (!navigator.onLine) return alert('Need internet for rooms.');
+    if (!navigator.onLine) return alert('Need internet.');
     roomCode = document.getElementById('code').value.trim();
     if (!roomCode) return alert('Enter room code.');
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
         const locations = snapshot.val() || {};
-        if (Object.keys(locations).length >= 4) return alert('Room full (max 4).');
-        document.getElementById('status').innerText = `Joined ${roomCode}. Real-time tracking active.`;
+        if (Object.keys(locations).length >= 4) return alert('Room full.');
+        document.getElementById('status').innerText = `Joined ${roomCode}.`;
         startRoomTracking();
     }, { onlyOnce: true });
 }
@@ -163,20 +152,19 @@ function startRoomTracking() {
             li.textContent = `${name}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`;
             deviceList.appendChild(li);
         });
-        updateRoutes(locations, keys);  // Real-time path highlighting
+        updateRoutes(locations, keys);
     });
 
     onChildAdded(ref(database, roomCode + '/locations'), (snapshot) => {
         const data = snapshot.val();
         if (data.name !== myName) {
-            alert(`${data.name} joined! Path highlighted.`);
+            alert(`${data.name} joined!`);
         }
     });
 }
 
-// Update routes with efficient shortest path highlighting
+// Update routes with distance/ETA
 async function updateRoutes(locations, keys) {
-    // Clear old routes
     routes.forEach(route => route.remove());
     routes = [];
     
@@ -192,6 +180,8 @@ async function updateRoutes(locations, keys) {
                 const data = await response.json();
                 if (data.routes && data.routes[0]) {
                     const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0], coord[1]]);
+                    const distance = (data.routes[0].distance / 1000).toFixed(2);  // km
+                    const duration = (data.routes[0].duration / 60).toFixed(1);  // min
                     const route = {
                         type: 'Feature',
                         properties: {},
@@ -204,4 +194,45 @@ async function updateRoutes(locations, keys) {
                         type: 'line',
                         source: routeId,
                         layout: { 'line-join': 'round', 'line-cap': 'round' },
-                        paint
+                        paint: { 'line-color': colors[colorIndex % colors.length], 'line-width': 8, 'line-opacity': 0.9 }
+                    });
+                    routes.push({
+                        remove: () => {
+                            if (map.getLayer(routeId)) map.removeLayer(routeId);
+                            if (map.getSource(routeId)) map.removeSource(routeId);
+                        }
+                    });
+                    // Update device list with distance/ETA
+                    const deviceList = document.getElementById('devices');
+                    const existingLi = deviceList.querySelector(`li[data-key="${keys[i]}-${keys[j]}"]`);
+                    if (existingLi) {
+                        existingLi.textContent += ` | ${distance} km, ${duration} min`;
+                    }
+                    colorIndex++;
+                }
+            } catch (error) {
+                console.error('Route error:', error);
+            }
+        }
+    }
+}
+
+// Clear routes
+function clearRoutes() {
+    routes.forEach(route => route.remove());
+    routes = [];
+    alert('Routes cleared.');
+}
+
+// Download area for offline
+function downloadArea() {
+    if (!map) return alert('Map not ready.');
+    const bounds = map.getBounds();
+    const minZoom = 10, maxZoom = 16;
+    let tilesDownloaded = 0;
+    const totalTiles = (maxZoom - minZoom + 1) * 4;  // Estimate
+    alert('Downloading map area. This may take time.');
+    map.offlineManager = new MaplibreOfflineManager(map);
+    map.offlineManager.download(bounds, minZoom, maxZoom, (progress) => {
+        tilesDownloaded++;
+        if (
