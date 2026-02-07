@@ -8,8 +8,8 @@
     "theme_color": "#007bff",
     "icons": [
         {
-            "src": "https://via.placeholder.com/192x192.png?text=GPS",  // Replace with your icon URL if available
-            "sizes": "192x192",
+            "src": "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+            "sizes": "25x41",
             "type": "image/png"
         }
     ]
