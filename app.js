@@ -163,9 +163,10 @@ function startRoomTracking() {
     });
 }
 
-// Update routes with HTTPS OSRM
+// Update routes with proper cleanup
 async function updateRoutes(locations, keys) {
     console.log('Updating routes for keys:', keys);
+    // Clear all existing routes properly
     routes.forEach(route => route.remove());
     routes = [];
     
@@ -193,6 +194,10 @@ async function updateRoutes(locations, keys) {
                         geometry: { type: 'LineString', coordinates }
                     };
                     const routeId = `route-${keys[i]}-${keys[j]}`;
+                    // Remove existing source/layer if present
+                    if (map.getLayer(routeId)) map.removeLayer(routeId);
+                    if (map.getSource(routeId)) map.removeSource(routeId);
+                    // Add new source and layer
                     map.addSource(routeId, { type: 'geojson', data: route });
                     map.addLayer({
                         id: routeId,
