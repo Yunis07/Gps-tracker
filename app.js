@@ -29,34 +29,25 @@ let polylines = {};
 let destination = null;
 let offlineLayer = null;
 let watchId = null;
+let trackingStarted = false;
 
-// Initialize map with fallback
-function initMap() {
+// Initialize map on page load (using your provided code as base)
+window.onload = function() {
     try {
-        map = L.map('map').setView([0, 0], 2);
-        const onlineTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        });
-        offlineLayer = L.tileLayer.offline('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
-            subdomains: 'abc',
-            minZoom: 10,
-            maxZoom: 16,
-            crossOrigin: true
-        });
-        map.addLayer(offlineLayer);
-        map.addLayer(onlineTiles);
-        console.log('Map initialized with Leaflet');
+        map = L.map('map').setView([51.505, -0.09], 13);  // Your code: Default view
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        // Add a default marker (from your code)
+        L.marker([51.5, -0.09]).addTo(map)
+            .bindPopup('Welcome! Click Start Tracking to show your location.')
+            .openPopup();
+        console.log('Map initialized successfully');
     } catch (error) {
-        console.error('Leaflet failed, using OpenLayers fallback:', error);
-        // Fallback to OpenLayers (free, efficient)
-        const olMap = new ol.Map({
-            target: 'map',
-            layers: [new ol.layer.Tile({ source: new ol.source.OSM() })],
-            view: new ol.View({ center: ol.proj.fromLonLat([0, 0]), zoom: 2 })
-        });
-        map = { addLayer: () => {}, removeLayer: () => {}, setView: () => {} }; // Dummy for compatibility
-        alert('Map loaded with fallback. Some features may be limited.');
+        console.error('Map initialization failed:', error);
+        alert('Map failed to load. Check internet or try refreshing.');
+        // Fallback: Simple text map placeholder
+        document.getElementById('map').innerHTML = '<p>Map unavailable. Enable JavaScript or check connection.</p>';
     }
 
     // Register PWA
@@ -66,7 +57,7 @@ function initMap() {
     updateOfflineStatus();
     window.addEventListener('online', updateOfflineStatus);
     window.addEventListener('offline', updateOfflineStatus);
-}
+};
 
 // Update offline status
 function updateOfflineStatus() {
@@ -74,15 +65,53 @@ function updateOfflineStatus() {
     document.getElementById('offline-status').innerText = `Offline Status: ${status}`;
 }
 
+// Start tracking (requests location permission)
+function startTracking() {
+    if (trackingStarted) return alert('Tracking already started.');
+    if (!navigator.geolocation) return alert('Geolocation not supported on this device.');
+    
+    // Request permission and start watching
+    navigator.geolocation.getCurrentPosition((position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        map.setView([lat, lng], 15);  // Center on current location
+        updateLocalPosition(lat, lng);  // Add marker
+        watchId = navigator.geolocation.watchPosition((pos) => {
+            updateLocalPosition(pos.coords.latitude, pos.coords.longitude);
+        }, (error) => alert('GPS error: ' + error.message), { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 });
+        trackingStarted = true;
+        document.getElementById('status').innerText = 'Tracking started. Your location is shown on the map.';
+    }, (error) => {
+        alert('Location permission denied or unavailable: ' + error.message + '. Enable location in browser settings.');
+    });
+}
+
+// Update local position (current location marker)
+function updateLocalPosition(lat, lng) {
+    if (!markers['me']) {
+        markers['me'] = L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup('Your Location').openPopup();
+    } else {
+        markers['me'].setLatLng([lat, lng]);
+    }
+    if (destination) {
+        const line = turf.lineString([[lng, lat], [destination.lng, destination.lat]]);
+        const distance = turf.length(line, { units: 'kilometers' });
+        if (polylines['destination']) map.removeLayer(polylines['destination']);
+        polylines['destination'] = L.polyline([[lat, lng], [destination.lat, destination.lng]], { color: 'blue', weight: 4, opacity: 0.7 }).addTo(map).bindPopup(`Path to Destination: ${distance.toFixed(2)} km`);
+    }
+}
+
 // Create a new room
 function createRoom() {
-    roomCode = Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9); // Alphanumeric ID
+    if (!trackingStarted) return alert('Start tracking first.');
+    roomCode = Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
     document.getElementById('code').value = roomCode;
     joinRoom();
 }
 
 // Join a room
 function joinRoom() {
+    if (!trackingStarted) return alert('Start tracking first.');
     roomCode = document.getElementById('code').value.trim();
     if (!roomCode) return alert('Enter or create a room code!');
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
@@ -90,21 +119,12 @@ function joinRoom() {
         const deviceCount = Object.keys(locations).length;
         if (deviceCount >= 3) return alert('Room full (max 3).');
         document.getElementById('status').innerText = `Joined room: ${roomCode}`;
-        initMap();
-        startTracking();
+        startRoomTracking();
     }, { onlyOnce: true });
 }
 
-// Start tracking
-function startTracking() {
-    if (!navigator.geolocation) return alert('Geolocation not supported.');
-    watchId = navigator.geolocation.watchPosition((position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        if (navigator.onLine) set(ref(database, roomCode + '/locations/' + myId), { lat, lng, timestamp: Date.now() });
-        updateLocalPosition(lat, lng);
-    }, (error) => alert('GPS error: ' + error.message), { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 });
-
+// Start room tracking (sync with others)
+function startRoomTracking() {
     if (navigator.onLine) {
         onValue(ref(database, roomCode + '/locations'), (snapshot) => {
             const locations = snapshot.val() || {};
@@ -115,7 +135,7 @@ function startTracking() {
                 const loc = locations[key];
                 const deviceName = `Device ${index + 1} (${key === myId ? 'You' : 'Other'})`;
                 if (!markers[key]) {
-                    const colors = ['red', 'blue', 'green'];
+                    const colors = ['blue', 'green', 'orange'];
                     markers[key] = L.marker([loc.lat, loc.lng], { icon: L.icon({ iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${colors[index] || 'grey'}.png`, shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup(deviceName);
                 } else {
                     markers[key].setLatLng([loc.lat, loc.lng]);
@@ -126,7 +146,7 @@ function startTracking() {
             });
             if (keys.length > 0) map.setView([locations[keys[0]].lat, locations[keys[0]].lng], 15);
             Object.keys(markers).forEach(key => {
-                if (!keys.includes(key)) {
+                if (!keys.includes(key) && key !== 'me') {
                     map.removeLayer(markers[key]);
                     delete markers[key];
                 }
@@ -136,27 +156,12 @@ function startTracking() {
     }
 }
 
-// Update local position
-function updateLocalPosition(lat, lng) {
-    if (!markers[myId]) {
-        markers[myId] = L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup('You');
-    } else {
-        markers[myId].setLatLng([lat, lng]);
-    }
-    if (destination) {
-        const line = turf.lineString([[lng, lat], [destination.lng, destination.lat]]);
-        const distance = turf.length(line, { units: 'kilometers' });
-        if (polylines['destination']) map.removeLayer(polylines['destination']);
-        polylines['destination'] = L.polyline([[lat, lng], [destination.lat, destination.lng]], { color: 'blue', weight: 4, opacity: 0.7 }).addTo(map).bindPopup(`Path to Destination: ${distance.toFixed(2)} km`);
-    }
-}
-
 // Update routes (online)
 async function updateRoutes(locations, keys) {
     Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
     polylines = {};
     if (keys.length < 2) return;
-    const colors = ['red', 'blue', 'green'];
+    const colors = ['red', 'purple', 'yellow'];
     let colorIndex = 0;
     for (let i = 0; i < keys.length; i++) {
         for (let j = i + 1; j < keys.length; j++) {
@@ -180,13 +185,15 @@ async function updateRoutes(locations, keys) {
 
 // Download tiles
 function downloadTiles() {
-    if (!offlineLayer) return alert('Map not ready.');
+    if (!map) return alert('Map not ready.');
     const bounds = map.getBounds();
-    offlineLayer.saveTiles(10, 16, () => alert('Tiles downloaded!'), (error) => alert('Download failed: ' + error), bounds);
+    // Simple offline tile download (using Leaflet offline plugin if available)
+    alert('Tile download not fully implemented in this version. Zoom to your area and use browser cache for offline.');
 }
 
 // Set destination
 function setDestination() {
+    if (!map) return alert('Map not ready.');
     alert('Click on the map to set destination.');
     map.once('click', (e) => {
         destination = e.latlng;
@@ -198,16 +205,19 @@ function setDestination() {
 // Leave room
 function leaveRoom() {
     if (watchId) navigator.geolocation.clearWatch(watchId);
-    if (roomCode) remove(ref(database, roomCode + '/locations/' + myId));
+    if (roomCode && navigator.onLine) remove(ref(database, roomCode + '/locations/' + myId));
     roomCode = null;
+    trackingStarted = false;
     document.getElementById('status').innerText = 'Left room.';
     document.getElementById('devices').innerHTML = '';
-    if (map) map.remove();
+    Object.values(markers).forEach(marker => map.removeLayer(marker));
+    Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
     markers = {};
     polylines = {};
 }
 
 // Expose functions
+window.startTracking = startTracking;
 window.createRoom = createRoom;
 window.joinRoom = joinRoom;
 window.leaveRoom = leaveRoom;
