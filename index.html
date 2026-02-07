@@ -3,41 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-Time GPS Tracker (Offline Ready)</title>
+    <title>Real-Time GPS Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="manifest" href="manifest.json">
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f0f8ff; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         h1 { text-align: center; color: #007bff; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        input, button { padding: 10px; margin: 10px 0; width: 100%; box-sizing: border-box; }
-        button { background-color: #007bff; color: white; border: none; cursor: pointer; }
-        button:hover { background-color: #0056b3; }
-        #map { width: 100%; height: 400px; margin: 20px 0; border-radius: 8px; }
-        #status { margin: 10px 0; font-weight: bold; }
+        input, button { padding: 12px; margin: 10px 0; width: 100%; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; transition: background 0.3s; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #map { width: 100%; height: 400px; border-radius: 8px; }
+        #status { font-weight: bold; color: #28a745; }
         #devices { list-style: none; padding: 0; }
-        #devices li { padding: 5px; background: #e9ecef; margin: 5px 0; border-radius: 4px; }
-        .offline-controls { margin-top: 20px; }
+        #devices li { background: #e9ecef; padding: 8px; margin: 5px 0; border-radius: 4px; }
+        .spinner { display: none; border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Real-Time GPS Tracker (Offline Ready)</h1>
-        <p>Enter your name, start tracking, then create or join a room to share locations. Names appear on markers.</p>
-        <input type="text" id="name" placeholder="Enter your name (e.g., John)" />
-        <button onclick="startTracking()">Start Tracking (Grant Location Permission)</button>
-        <button onclick="createRoom()">Create New Room</button>
-        <input type="text" id="code" placeholder="Or enter room code to join" />
+        <h1>Real-Time GPS Tracker</h1>
+        <p>Enter your name, start tracking, and share locations in a room. Low data usage, fast UI.</p>
+        <input type="text" id="name" placeholder="Your name (e.g., John)" />
+        <button onclick="startTracking()">Start Tracking <div class="spinner" id="tracking-spinner"></div></button>
+        <button onclick="createRoom()">Create Room</button>
+        <input type="text" id="code" placeholder="Room code" />
         <button onclick="joinRoom()">Join Room</button>
-        <button onclick="leaveRoom()" style="background-color: #dc3545;">Leave Room</button>
+        <button onclick="leaveRoom()" style="background: #dc3545;">Leave Room</button>
         <div id="status"></div>
         <ul id="devices"></ul>
         <div id="map"></div>
-        <div class="offline-controls">
-            <button onclick="downloadTiles()">Download Map Tiles for Offline (Select Area)</button>
-            <button onclick="setDestination()">Set Destination (Click on Map)</button>
-            <p id="offline-status">Offline Status: Checking...</p>
-        </div>
     </div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
