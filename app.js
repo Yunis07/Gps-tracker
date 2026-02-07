@@ -345,31 +345,4 @@ async function updateRoutes(locations, keys) {
                     // Add distance/ETA
                     const deviceList = document.getElementById('devices');
                     const li = deviceList.querySelector(`li:nth-child(${j + 1})`);
-                    if (li) li.textContent += ` | ${distanceKm} km, ${durationMin} min`;
-                    colorIndex++;
-                } else {
-                    console.warn('No routes in OSRM response');
-                }
-            } catch (error) {
-                console.error('Route fetch failed:', error);
-            }
-        }
-    }
-}
-
-// Clear routes
-function clearRoutes() {
-    routes.forEach(route => route.remove());
-    routes = [];
-    alert('Routes cleared.');
-}
-
-// Download area
-function downloadArea() {
-    alert('Offline download not implemented.');
-}
-
-// Leave room
-function leaveRoom() {
-    if (watchId) navigator.geolocation.clearWatch(watchId);
-    if (roomCode && navigator.onLine) remove(ref(database, roomCode + '/locations/' +
+                    if (li) li.textContent
