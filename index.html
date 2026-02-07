@@ -8,174 +8,29 @@
     <link href='https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css' rel='stylesheet' />
     <link rel="manifest" href="manifest.json">
     <style>
-        :root {
-            --bg-color: #ffffff;
-            --text-color: #333333;
-            --button-bg: #007bff;
-            --button-hover: #0056b3;
-            --button-text: #ffffff;
-            --input-bg: #f8f9fa;
-            --input-border: #cccccc;
-            --status-color: #28a745;
-            --list-bg: #e9ecef;
-            --shadow: rgba(0,0,0,0.1);
-            --transition: all 0.3s ease;
-        }
-        [data-theme="dark"] {
-            --bg-color: #1a1a1a;
-            --text-color: #e0e0e0;
-            --button-bg: #4a90e2;
-            --button-hover: #357abd;
-            --button-text: #ffffff;
-            --input-bg: #2c2c2c;
-            --input-border: #555555;
-            --status-color: #4caf50;
-            --list-bg: #333333;
-            --shadow: rgba(255,255,255,0.1);
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 20px;
-            background: var(--bg-color);
-            color: var(--text-color);
-            transition: var(--transition);
-        }
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: var(--bg-color);
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 8px 20px var(--shadow);
-            transition: var(--transition);
-        }
-        h1 {
-            text-align: center;
-            color: var(--button-bg);
-            margin-bottom: 20px;
-            font-weight: 600;
-        }
-        .theme-toggle {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: var(--button-bg);
-            color: var(--button-text);
-            border: none;
-            padding: 10px 15px;
-            border-radius: 50px;
-            cursor: pointer;
-            transition: var(--transition);
-            box-shadow: 0 4px 10px var(--shadow);
-        }
-        .theme-toggle:hover {
-            background: var(--button-hover);
-            transform: scale(1.05);
-        }
-        input, button {
-            padding: 14px;
-            margin: 12px 0;
-            width: 100%;
-            border: 1px solid var(--input-border);
-            border-radius: 8px;
-            box-sizing: border-box;
-            font-size: 16px;
-            transition: var(--transition);
-        }
-        input {
-            background: var(--input-bg);
-            color: var(--text-color);
-        }
-        input:focus {
-            outline: none;
-            border-color: var(--button-bg);
-            box-shadow: 0 0 5px var(--button-bg);
-        }
-        button {
-            background: var(--button-bg);
-            color: var(--button-text);
-            border: none;
-            cursor: pointer;
-            font-weight: 500;
-            transition: var(--transition);
-            box-shadow: 0 4px 10px var(--shadow);
-        }
-        button:hover {
-            background: var(--button-hover);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px var(--shadow);
-        }
-        button:disabled {
-            background: #cccccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .button-row {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .button-row button {
-            flex: 1;
-            min-width: 120px;
-        }
-        #map {
-            width: 100%;
-            height: 450px;
-            border-radius: 10px;
-            margin-top: 20px;
-            transition: var(--transition);
-            opacity: 0;
-            animation: fadeIn 1s ease-in-out forwards;
-        }
-        @keyframes fadeIn {
-            to { opacity: 1; }
-        }
-        #status {
-            font-weight: 600;
-            color: var(--status-color);
-            margin: 15px 0;
-            animation: slideIn 0.5s ease-out;
-        }
-        @keyframes slideIn {
-            from { transform: translateY(-10px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-        #devices {
-            list-style: none;
-            padding: 0;
-        }
-        #devices li {
-            background: var(--list-bg);
-            padding: 10px;
-            margin: 8px 0;
-            border-radius: 6px;
-            transition: var(--transition);
-        }
-        #devices li:hover {
-            background: var(--input-bg);
-        }
-        .spinner {
-            display: none;
-            border: 3px solid var(--input-bg);
-            border-top: 3px solid var(--button-bg);
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            margin-left: 10px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px; background: #ffffff; color: #333333; }
+        .container { max-width: 900px; margin: 0 auto; background: #ffffff; padding: 25px; border-radius: 15px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #007bff; margin-bottom: 20px; font-weight: 600; }
+        input, button { padding: 14px; margin: 12px 0; width: 100%; border: 1px solid #cccccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        input { background: #f8f9fa; color: #333333; }
+        input:focus { outline: none; border-color: #007bff; box-shadow: 0 0 5px #007bff; }
+        button { background: #007bff; color: #ffffff; border: none; cursor: pointer; font-weight: 500; }
+        button:hover { background: #0056b3; transform: translateY(-2px); }
+        button:disabled { background: #cccccc; cursor: not-allowed; transform: none; }
+        .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
+        .button-row button { flex: 1; min-width: 120px; }
+        #map { width: 100%; height: 450px; border-radius: 10px; margin-top: 20px; }
+        #status { font-weight: 600; color: #28a745; margin: 15px 0; }
+        #devices { list-style: none; padding: 0; }
+        #devices li { background: #e9ecef; padding: 10px; margin: 8px 0; border-radius: 6px; }
+        .spinner { display: none; border: 3px solid #f8f9fa; border-top: 3px solid #007bff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; margin-left: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body data-theme="light">
-    <button class="theme-toggle" onclick="toggleTheme()">🌙 Dark Mode</button>
+<body>
     <div class="container">
         <h1>Real-Time GPS Tracker</h1>
-        <p>Professional tracking with interactive maps, real-time paths, and seamless themes.</p>
+        <p>Track locations, highlight shortest paths, and go offline seamlessly.</p>
         <input type="text" id="name" placeholder="Your name (e.g., John)" />
         <button onclick="startTracking()">Start Tracking <div class="spinner" id="tracking-spinner"></div></button>
         <div class="button-row">
@@ -186,6 +41,7 @@
         <div class="button-row">
             <button onclick="leaveRoom()" style="background: #dc3545;">Leave Room</button>
             <button onclick="clearRoutes()">Clear Routes</button>
+            <button onclick="downloadArea()">Download Area</button>
         </div>
         <div id="status"></div>
         <ul id="devices"></ul>
