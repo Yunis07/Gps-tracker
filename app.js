@@ -25,13 +25,10 @@ let myName = '';
 let map;
 let markers = [];
 let routes = [];
-let destinationMarker = null;
-let destinationRoute = null;
 let watchId = null;
 let trackingStarted = false;
 let lastUpdate = 0;
 let myLat = 0, myLng = 0;
-let settingDestination = false;
 
 // Initialize MapLibre map
 window.onload = function() {
@@ -48,15 +45,9 @@ window.onload = function() {
             const defaultMarker = new maplibregl.Marker().setLngLat([-0.09, 51.505]).setPopup(new maplibregl.Popup().setHTML('Start tracking.')).addTo(map);
             markers.push(defaultMarker);
             map.on('click', (e) => {
-                if (settingDestination) {
-                    setDestination(e.lngLat.lat, e.lngLat.lng);
-                    settingDestination = false;
-                    document.getElementById('set-destination').innerText = 'Set Destination';
-                } else {
-                    const features = map.queryRenderedFeatures(e.point);
-                    if (features.length) {
-                        new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<strong>${features[0].properties.name || 'Feature'}</strong>`).addTo(map);
-                    }
+                const features = map.queryRenderedFeatures(e.point);
+                if (features.length) {
+                    new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<strong>${features[0].properties.name || 'Feature'}</strong>`).addTo(map);
                 }
             });
         });
@@ -115,89 +106,7 @@ function updateLocalPosition(lat, lng) {
     }
     if (roomCode && navigator.onLine) {
         set(ref(database, roomCode + '/locations/' + myId), { lat, lng, name: myName, timestamp: Date.now() });
-        // Update destination route if set
-        if (destinationMarker) updateDestinationRoute();
     }
-}
-
-// Set destination
-function setDestination(lat, lng) {
-    if (!trackingStarted) return alert('Start tracking first.');
-    if (destinationMarker) destinationMarker.remove();
-    destinationMarker = new maplibregl.Marker({ color: 'green' }).setLngLat([lng, lat]).setPopup(new maplibregl.Popup().setHTML('Destination')).addTo(map);
-    if (roomCode && navigator.onLine) {
-        set(ref(database, roomCode + '/destinations/' + myId), { lat, lng });
-    }
-    updateDestinationRoute();
-    alert('Destination set. Path highlighted.');
-}
-
-// Update destination route
-async function updateDestinationRoute() {
-    if (!destinationMarker || !myLat || !myLng) return;
-    const destLngLat = destinationMarker.getLngLat();
-    const distance = getDistance(myLat, myLng, destLngLat.lat, destLngLat.lng);
-    if (distance < 0.05) return; // Skip if too close
-    try {
-        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${myLng},${myLat};${destLngLat.lng},${destLngLat.lat}?overview=full&geometries=geojson`);
-        if (!response.ok) throw new Error('OSRM failed');
-        const data = await response.json();
-        if (data.routes && data.routes[0]) {
-            const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0], coord[1]]);
-            const route = { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates } };
-            const routeId = `destination-${myId}`;
-            if (map.getLayer(routeId)) map.removeLayer(routeId);
-            if (map.getSource(routeId)) map.removeSource(routeId);
-            map.addSource(routeId, { type: 'geojson', data: route });
-            map.addLayer({
-                id: routeId,
-                type: 'line',
-                source: routeId,
-                layout: { 'line-join': 'round', 'line-cap': 'round' },
-                paint: { 'line-color': '#FF0000', 'line-width': 10, 'line-opacity': 0.9 }
-            });
-            if (destinationRoute) destinationRoute.remove();
-            destinationRoute = {
-                remove: () => {
-                    if (map.getLayer(routeId)) map.removeLayer(routeId);
-                    if (map.getSource(routeId)) map.removeSource(routeId);
-                }
-            };
-            console.log('Destination route added');
-        }
-    } catch (error) {
-        console.error('Destination route failed:', error);
-        // Fallback: straight line
-        const route = { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[myLng, myLat], [destLngLat.lng, destLngLat.lat]] } };
-        const routeId = `destination-${myId}`;
-        if (map.getLayer(routeId)) map.removeLayer(routeId);
-        if (map.getSource(routeId)) map.removeSource(routeId);
-        map.addSource(routeId, { type: 'geojson', data: route });
-        map.addLayer({
-            id: routeId,
-            type: 'line',
-            source: routeId,
-            layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': '#FF0000', 'line-width': 10, 'line-opacity': 0.9 }
-        });
-        if (destinationRoute) destinationRoute.remove();
-        destinationRoute = {
-            remove: () => {
-                if (map.getLayer(routeId)) map.removeLayer(routeId);
-                if (map.getSource(routeId)) map.removeSource(routeId);
-            }
-        };
-    }
-}
-
-// Helper: Calculate distance
-function getDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371; // Radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
 }
 
 // Create room
@@ -246,21 +155,6 @@ function startRoomTracking() {
         updateRoutes(locations, keys);
     });
 
-    // Listen for destinations
-    onValue(ref(database, roomCode + '/destinations'), (snapshot) => {
-        const destinations = snapshot.val() || {};
-        Object.keys(destinations).forEach(userId => {
-            if (userId !== myId) {
-                const dest = destinations[userId];
-                if (!destinationMarker) {
-                    destinationMarker = new maplibregl.Marker({ color: 'green' }).setLngLat([dest.lng, dest.lat]).setPopup(new maplibregl.Popup().setHTML('Shared Destination')).addTo(map);
-                }
-                // Update shared route (simplified)
-                updateSharedDestinationRoute(dest.lat, dest.lng, userId);
-            }
-        });
-    });
-
     onChildAdded(ref(database, roomCode + '/locations'), (snapshot) => {
         const data = snapshot.val();
         if (data.name !== myName) {
@@ -269,37 +163,10 @@ function startRoomTracking() {
     });
 }
 
-// Update shared destination route
-async function updateSharedDestinationRoute(destLat, destLng, userId) {
-    const userLoc = markers.find(m => m.getPopup().getHTML().includes(userId))?.getLngLat();
-    if (!userLoc) return;
-    try {
-        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLoc.lng},${userLoc.lat};${destLng},${destLat}?overview=full&geometries=geojson`);
-        if (!response.ok) throw new Error('OSRM failed');
-        const data = await response.json();
-        if (data.routes && data.routes[0]) {
-            const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0], coord[1]]);
-            const route = { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates } };
-            const routeId = `shared-destination-${userId}`;
-            if (map.getLayer(routeId)) map.removeLayer(routeId);
-            if (map.getSource(routeId)) map.removeSource(routeId);
-            map.addSource(routeId, { type: 'geojson', data: route });
-            map.addLayer({
-                id: routeId,
-                type: 'line',
-                source: routeId,
-                layout: { 'line-join': 'round', 'line-cap': 'round' },
-                paint: { 'line-color': '#00FF00', 'line-width': 10, 'line-opacity': 0.9 }
-            });
-        }
-    } catch (error) {
-        console.error('Shared destination route failed:', error);
-    }
-}
-
-// Update routes
+// Update routes with proper cleanup
 async function updateRoutes(locations, keys) {
     console.log('Updating routes for keys:', keys);
+    // Clear all existing routes properly
     routes.forEach(route => route.remove());
     routes = [];
     
@@ -312,12 +179,85 @@ async function updateRoutes(locations, keys) {
     for (let i = 0; i < keys.length; i++) {
         for (let j = i + 1; j < keys.length; j++) {
             const loc1 = locations[keys[i]], loc2 = locations[keys[j]];
-            const distance = getDistance(loc1.lat, loc1.lng, loc2.lat, loc2.lng);
-            if (distance < 0.05) continue; // Skip close points
             console.log(`Fetching route from ${loc1.lat},${loc1.lng} to ${loc2.lat},${loc2.lng}`);
             try {
                 const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${loc1.lng},${loc1.lat};${loc2.lng},${loc2.lat}?overview=full&geometries=geojson`);
                 if (!response.ok) throw new Error(`OSRM failed: ${response.status}`);
                 const data = await response.json();
                 if (data.routes && data.routes[0]) {
-                    const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0
+                    const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0], coord[1]]);
+                    const distance = (data.routes[0].distance / 1000).toFixed(2);
+                    const duration = (data.routes[0].duration / 60).toFixed(1);
+                    const route = {
+                        type: 'Feature',
+                        properties: {},
+                        geometry: { type: 'LineString', coordinates }
+                    };
+                    const routeId = `route-${keys[i]}-${keys[j]}`;
+                    // Remove existing source/layer if present
+                    if (map.getLayer(routeId)) map.removeLayer(routeId);
+                    if (map.getSource(routeId)) map.removeSource(routeId);
+                    // Add new source and layer
+                    map.addSource(routeId, { type: 'geojson', data: route });
+                    map.addLayer({
+                        id: routeId,
+                        type: 'line',
+                        source: routeId,
+                        layout: { 'line-join': 'round', 'line-cap': 'round' },
+                        paint: { 'line-color': colors[colorIndex % colors.length], 'line-width': 8, 'line-opacity': 0.9 }
+                    });
+                    routes.push({
+                        remove: () => {
+                            if (map.getLayer(routeId)) map.removeLayer(routeId);
+                            if (map.getSource(routeId)) map.removeSource(routeId);
+                        }
+                    });
+                    console.log('Route added:', routeId);
+                    // Add distance/ETA
+                    const deviceList = document.getElementById('devices');
+                    const li = deviceList.querySelector(`li:nth-child(${j + 1})`);
+                    if (li) li.textContent += ` | ${distance} km, ${duration} min`;
+                    colorIndex++;
+                } else {
+                    console.warn('No routes in OSRM response');
+                }
+            } catch (error) {
+                console.error('Route fetch failed:', error);
+            }
+        }
+    }
+}
+
+// Clear routes
+function clearRoutes() {
+    routes.forEach(route => route.remove());
+    routes = [];
+    alert('Routes cleared.');
+}
+
+// Download area
+function downloadArea() {
+    alert('Offline download not implemented.');
+}
+
+// Leave room
+function leaveRoom() {
+    if (watchId) navigator.geolocation.clearWatch(watchId);
+    if (roomCode && navigator.onLine) remove(ref(database, roomCode + '/locations/' + myId));
+    roomCode = null;
+    trackingStarted = false;
+    document.getElementById('status').innerText = 'Left room.';
+    document.getElementById('devices').innerHTML = '';
+    markers.forEach(marker => marker.remove());
+    routes.forEach(route => route.remove());
+    markers = [];
+    routes = [];
+}
+
+// Expose functions
+window.startTracking = startTracking;
+window.createRoom = createRoom;
+window.joinRoom = joinRoom;
+window.leaveRoom = leaveRoom;
+window.clearRoutes = clearRoutes;
+window.downloadArea = downloadArea;
