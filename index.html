@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time GPS Tracker (Offline Ready)</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="manifest" href="manifest.json"> <!-- PWA manifest -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script> <!-- For offline path calculation -->
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        h1 { text-align: center; color: #007bff; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input, button { padding: 10px; margin: 10px 0; width: 100%; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #map { width: 100%; height: 400px; margin: 20px 0; border-radius: 8px; }
+        #status { margin: 10px 0; font-weight: bold; }
+        #devices { list-style: none; padding: 0; }
+        #devices li { padding: 5px; background: #e9ecef; margin: 5px 0; border-radius: 4px; }
+        .offline-controls { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Real-Time GPS Tracker (Offline Ready)</h1>
+        <p>Enter a shared code to connect up to 3 devices. Share live locations and paths. Download maps for offline use.</p>
+        <input type="text" id="code" placeholder="Enter shared code (e.g., room123)" />
+        <button onclick="joinRoom()">Join Room</button>
+        <button onclick="leaveRoom()" style="background-color: #dc3545;">Leave Room</button>
+        <div id="status"></div>
+        <ul id="devices"></ul>
+        <div id="map"></div>
+        <div class="offline-controls">
+            <button onclick="downloadTiles()">Download Map Tiles for Offline (Select Area)</button>
+            <button onclick="setDestination()">Set Destination (Click on Map)</button>
+            <p id="offline-status">Offline Status: Checking...</p>
+        </div>
+    </div>
+    <script type="module" src="app.js"></script>
+</body>
+</html>
