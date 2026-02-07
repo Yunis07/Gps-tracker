@@ -32,7 +32,7 @@ let myLat = 0, myLng = 0;
 
 // Initialize MapLibre map
 window.onload = function() {
-    const MAPTILER_KEY = '0ji8c4Ac7rZvNXeSUoKl';  // Use this key; switch to 'DDsrWRPoPOfwJ9ISsEV2' if needed
+    const MAPTILER_KEY = '0ji8c4Ac7rZvNXeSUoKl';
     try {
         map = new maplibregl.Map({
             container: 'map',
@@ -42,7 +42,7 @@ window.onload = function() {
         });
         map.on('load', () => {
             console.log('Map loaded successfully');
-            const defaultMarker = new maplibregl.Marker().setLngLat([-0.09, 51.505]).setPopup(new maplibregl.Popup().setHTML('Start tracking to see locations.')).addTo(map);
+            const defaultMarker = new maplibregl.Marker().setLngLat([-0.09, 51.505]).setPopup(new maplibregl.Popup().setHTML('Start tracking.')).addTo(map);
             markers.push(defaultMarker);
             map.on('click', (e) => {
                 const features = map.queryRenderedFeatures(e.point);
@@ -53,7 +53,7 @@ window.onload = function() {
         });
         map.on('error', (e) => {
             console.error('Map error:', e);
-            alert('Map failed to load. Check key or internet.');
+            alert('Map failed.');
         });
     } catch (error) {
         console.error('Map init error:', error);
@@ -87,7 +87,7 @@ function startTracking() {
         document.getElementById('status').innerText = `Tracking ${myName}.`;
         document.getElementById('tracking-spinner').style.display = 'none';
     }, (error) => {
-        alert('Location denied. Enable in browser settings.');
+        alert('Location denied.');
         document.getElementById('tracking-spinner').style.display = 'none';
     });
 }
@@ -120,7 +120,7 @@ function createRoom() {
 // Join room
 function joinRoom() {
     if (!trackingStarted) return alert('Start tracking first.');
-    if (!navigator.onLine) return alert('Need internet for rooms.');
+    if (!navigator.onLine) return alert('Need internet.');
     roomCode = document.getElementById('code').value.trim();
     if (!roomCode) return alert('Enter room code.');
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
@@ -136,6 +136,7 @@ function startRoomTracking() {
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
         const locations = snapshot.val() || {};
         const keys = Object.keys(locations);
+        console.log('Locations updated:', locations);
         const deviceList = document.getElementById('devices');
         deviceList.innerHTML = '';
         keys.forEach((key, index) => {
@@ -162,20 +163,25 @@ function startRoomTracking() {
     });
 }
 
-// Update routes
+// Update routes with logging
 async function updateRoutes(locations, keys) {
+    console.log('Updating routes for keys:', keys);
     routes.forEach(route => route.remove());
     routes = [];
     
-    if (keys.length < 2) return;
+    if (keys.length < 2) {
+        console.log('Not enough users for routes');
+        return;
+    }
     const colors = ['#0000FF', '#800080', '#FFFF00', '#00FFFF'];
     let colorIndex = 0;
     for (let i = 0; i < keys.length; i++) {
         for (let j = i + 1; j < keys.length; j++) {
             const loc1 = locations[keys[i]], loc2 = locations[keys[j]];
+            console.log(`Fetching route from ${loc1.lat},${loc1.lng} to ${loc2.lat},${loc2.lng}`);
             try {
                 const response = await fetch(`http://router.project-osrm.org/route/v1/driving/${loc1.lng},${loc1.lat};${loc2.lng},${loc2.lat}?overview=full&geometries=geojson`);
-                if (!response.ok) throw new Error('OSRM failed');
+                if (!response.ok) throw new Error(`OSRM failed: ${response.status}`);
                 const data = await response.json();
                 if (data.routes && data.routes[0]) {
                     const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0], coord[1]]);
@@ -201,14 +207,17 @@ async function updateRoutes(locations, keys) {
                             if (map.getSource(routeId)) map.removeSource(routeId);
                         }
                     });
+                    console.log('Route added:', routeId);
                     // Add distance/ETA
                     const deviceList = document.getElementById('devices');
                     const li = deviceList.querySelector(`li:nth-child(${j + 1})`);
                     if (li) li.textContent += ` | ${distance} km, ${duration} min`;
                     colorIndex++;
+                } else {
+                    console.warn('No routes in OSRM response');
                 }
             } catch (error) {
-                console.error('Route error:', error);
+                console.error('Route fetch failed:', error);
             }
         }
     }
@@ -221,9 +230,9 @@ function clearRoutes() {
     alert('Routes cleared.');
 }
 
-// Download area (basic)
+// Download area
 function downloadArea() {
-    alert('Offline download not implemented—use browser cache.');
+    alert('Offline download not implemented.');
 }
 
 // Leave room
