@@ -23,6 +23,7 @@ const database = getDatabase(app);
 // Global variables
 let roomCode = null;
 let myId = Math.random().toString(36).substr(2, 9);
+let myName = '';
 let map;
 let markers = {};
 let polylines = {};
@@ -31,28 +32,26 @@ let offlineLayer = null;
 let watchId = null;
 let trackingStarted = false;
 
-// Initialize map on page load (using your provided code as base)
+// Initialize map on page load
 window.onload = function() {
     try {
-        map = L.map('map').setView([51.505, -0.09], 13);  // Your code: Default view
+        map = L.map('map').setView([51.505, -0.09], 13);
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
-        // Add a default marker (from your code)
         L.marker([51.5, -0.09]).addTo(map)
-            .bindPopup('Welcome! Click Start Tracking to show your location.')
+            .bindPopup('Welcome! Start tracking to see your location.')
             .openPopup();
         console.log('Map initialized successfully');
     } catch (error) {
         console.error('Map initialization failed:', error);
-        alert('Map failed to load. Check internet or try refreshing.');
-        // Fallback: Simple text map placeholder
-        document.getElementById('map').innerHTML = '<p>Map unavailable. Enable JavaScript or check connection.</p>';
+        alert('Map failed to load. Check internet or refresh.');
+        document.getElementById('map').innerHTML = '<p>Map unavailable.</p>';
     }
 
-    // Register PWA
+    // Register PWA (only if sw.js exists)
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(console.error);
+        navigator.serviceWorker.register('/sw.js').catch(err => console.warn('PWA not available:', err));
     }
     updateOfflineStatus();
     window.addEventListener('online', updateOfflineStatus);
@@ -65,31 +64,32 @@ function updateOfflineStatus() {
     document.getElementById('offline-status').innerText = `Offline Status: ${status}`;
 }
 
-// Start tracking (requests location permission)
+// Start tracking
 function startTracking() {
+    myName = document.getElementById('name').value.trim();
+    if (!myName) return alert('Please enter your name.');
     if (trackingStarted) return alert('Tracking already started.');
-    if (!navigator.geolocation) return alert('Geolocation not supported on this device.');
+    if (!navigator.geolocation) return alert('Geolocation not supported.');
     
-    // Request permission and start watching
     navigator.geolocation.getCurrentPosition((position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        map.setView([lat, lng], 15);  // Center on current location
-        updateLocalPosition(lat, lng);  // Add marker
+        map.setView([lat, lng], 15);
+        updateLocalPosition(lat, lng);
         watchId = navigator.geolocation.watchPosition((pos) => {
             updateLocalPosition(pos.coords.latitude, pos.coords.longitude);
         }, (error) => alert('GPS error: ' + error.message), { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 });
         trackingStarted = true;
-        document.getElementById('status').innerText = 'Tracking started. Your location is shown on the map.';
+        document.getElementById('status').innerText = `Tracking started. Your name: ${myName}`;
     }, (error) => {
-        alert('Location permission denied or unavailable: ' + error.message + '. Enable location in browser settings.');
+        alert('Location permission denied: ' + error.message + '. Enable in browser settings.');
     });
 }
 
-// Update local position (current location marker)
+// Update local position
 function updateLocalPosition(lat, lng) {
     if (!markers['me']) {
-        markers['me'] = L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup('Your Location').openPopup();
+        markers['me'] = L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup(`${myName}: Your Location`).openPopup();
     } else {
         markers['me'].setLatLng([lat, lng]);
     }
@@ -101,7 +101,7 @@ function updateLocalPosition(lat, lng) {
     }
 }
 
-// Create a new room
+// Create room
 function createRoom() {
     if (!trackingStarted) return alert('Start tracking first.');
     roomCode = Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
@@ -109,11 +109,12 @@ function createRoom() {
     joinRoom();
 }
 
-// Join a room
+// Join room
 function joinRoom() {
     if (!trackingStarted) return alert('Start tracking first.');
+    if (!navigator.onLine) return alert('Joining rooms requires internet. Go online to sync with others.');
     roomCode = document.getElementById('code').value.trim();
-    if (!roomCode) return alert('Enter or create a room code!');
+    if (!roomCode) return alert('Enter a room code!');
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
         const locations = snapshot.val() || {};
         const deviceCount = Object.keys(locations).length;
@@ -123,40 +124,39 @@ function joinRoom() {
     }, { onlyOnce: true });
 }
 
-// Start room tracking (sync with others)
+// Start room tracking
 function startRoomTracking() {
-    if (navigator.onLine) {
-        onValue(ref(database, roomCode + '/locations'), (snapshot) => {
-            const locations = snapshot.val() || {};
-            const keys = Object.keys(locations);
-            const deviceList = document.getElementById('devices');
-            deviceList.innerHTML = '';
-            keys.forEach((key, index) => {
-                const loc = locations[key];
-                const deviceName = `Device ${index + 1} (${key === myId ? 'You' : 'Other'})`;
-                if (!markers[key]) {
-                    const colors = ['blue', 'green', 'orange'];
-                    markers[key] = L.marker([loc.lat, loc.lng], { icon: L.icon({ iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${colors[index] || 'grey'}.png`, shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup(deviceName);
-                } else {
-                    markers[key].setLatLng([loc.lat, loc.lng]);
-                }
-                const li = document.createElement('li');
-                li.textContent = `${deviceName}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`;
-                deviceList.appendChild(li);
-            });
-            if (keys.length > 0) map.setView([locations[keys[0]].lat, locations[keys[0]].lng], 15);
-            Object.keys(markers).forEach(key => {
-                if (!keys.includes(key) && key !== 'me') {
-                    map.removeLayer(markers[key]);
-                    delete markers[key];
-                }
-            });
-            if (navigator.onLine) updateRoutes(locations, keys);
+    onValue(ref(database, roomCode + '/locations'), (snapshot) => {
+        const locations = snapshot.val() || {};
+        const keys = Object.keys(locations);
+        const deviceList = document.getElementById('devices');
+        deviceList.innerHTML = '';
+        keys.forEach((key, index) => {
+            const loc = locations[key];
+            const name = loc.name || `Device ${index + 1}`;
+            const deviceName = key === myId ? `${myName} (You)` : name;
+            if (!markers[key]) {
+                const colors = ['blue', 'green', 'orange'];
+                markers[key] = L.marker([loc.lat, loc.lng], { icon: L.icon({ iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${colors[index] || 'grey'}.png`, shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup(`${deviceName}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`);
+            } else {
+                markers[key].setLatLng([loc.lat, loc.lng]);
+            }
+            const li = document.createElement('li');
+            li.textContent = `${deviceName}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`;
+            deviceList.appendChild(li);
         });
-    }
+        if (keys.length > 0) map.setView([locations[keys[0]].lat, locations[keys[0]].lng], 15);
+        Object.keys(markers).forEach(key => {
+            if (!keys.includes(key) && key !== 'me') {
+                map.removeLayer(markers[key]);
+                delete markers[key];
+            }
+        });
+        if (navigator.onLine) updateRoutes(locations, keys);
+    });
 }
 
-// Update routes (online)
+// Update routes
 async function updateRoutes(locations, keys) {
     Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
     polylines = {};
@@ -173,7 +173,7 @@ async function updateRoutes(locations, keys) {
                 if (data.routes && data.routes[0]) {
                     const route = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
                     const color = colors[colorIndex % colors.length];
-                    polylines[`${key1}-${key2}`] = L.polyline(route, { color, weight: 4, opacity: 0.7 }).addTo(map).bindPopup(`Route from Device ${i + 1} to Device ${j + 1} (${(data.routes[0].distance / 1000).toFixed(2)} km, ${(data.routes[0].duration / 60).toFixed(1)} min)`);
+                    polylines[`${key1}-${key2}`] = L.polyline(route, { color, weight: 4, opacity: 0.7 }).addTo(map).bindPopup(`Route from ${loc1.name || 'Device'} to ${loc2.name || 'Device'} (${(data.routes[0].distance / 1000).toFixed(2)} km, ${(data.routes[0].duration / 60).toFixed(1)} min)`);
                     colorIndex++;
                 }
             } catch (error) {
@@ -186,9 +186,7 @@ async function updateRoutes(locations, keys) {
 // Download tiles
 function downloadTiles() {
     if (!map) return alert('Map not ready.');
-    const bounds = map.getBounds();
-    // Simple offline tile download (using Leaflet offline plugin if available)
-    alert('Tile download not fully implemented in this version. Zoom to your area and use browser cache for offline.');
+    alert('Tile download not fully implemented. Zoom to your area and use browser cache.');
 }
 
 // Set destination
