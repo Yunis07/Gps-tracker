@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Real-Time GPS Tracker</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src='https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css' rel='stylesheet' />
     <link rel="manifest" href="manifest.json">
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f0f8ff; color: #333; }
@@ -18,28 +19,23 @@
         #status { font-weight: bold; color: #28a745; }
         #devices { list-style: none; padding: 0; }
         #devices li { background: #e9ecef; padding: 8px; margin: 5px 0; border-radius: 4px; }
-        .spinner { display: none; border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Real-Time GPS Tracker</h1>
-        <p>Enter your name, start tracking, and share locations in a room. Low data usage, fast UI.</p>
+        <p>Enter your name, start tracking, and share locations in a room. Streets highlight in real-time.</p>
         <input type="text" id="name" placeholder="Your name (e.g., John)" />
-        <button onclick="startTracking()">Start Tracking <div class="spinner" id="tracking-spinner"></div></button>
+        <button onclick="startTracking()">Start Tracking</button>
         <button onclick="createRoom()">Create Room</button>
         <input type="text" id="code" placeholder="Room code" />
         <button onclick="joinRoom()">Join Room</button>
         <button onclick="leaveRoom()" style="background: #dc3545;">Leave Room</button>
+        <button onclick="clearRoutes()">Clear Routes</button>
         <div id="status"></div>
         <ul id="devices"></ul>
         <div id="map"></div>
     </div>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
     <script type="module" src="app.js"></script>
-    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
 </body>
 </html>
-
