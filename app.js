@@ -24,21 +24,21 @@ let myId = Math.random().toString(36).substr(2, 9);
 let myName = '';
 let map;
 let markers = {};
-let polylines = {};
+let routes = {};  // For routing machine instances
 let watchId = null;
 let trackingStarted = false;
 let lastUpdate = 0;
-let myLat = 0, myLng = 0;  // Store current position for paths
+let myLat = 0, myLng = 0;
 
-// Initialize map
+// Initialize map with transport layer for clearer roads
 window.onload = function() {
     try {
         map = L.map('map').setView([51.505, -0.09], 13);
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        L.tileLayer('https://tile-{s}.openstreetmap.fr/hot/{z}/{x}/{y}.png', {  // Transport-style layer for road emphasis
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style of Humanitarian OpenStreetMap Team'
         }).addTo(map);
         L.marker([51.5, -0.09]).addTo(map).bindPopup('Start tracking to see locations.').openPopup();
-        console.log('Map ready');
+        console.log('Map ready with road-focused tiles');
     } catch (error) {
         alert('Map failed. Refresh or check connection.');
     }
@@ -59,7 +59,7 @@ function startTracking() {
             myLat = pos.coords.latitude;
             myLng = pos.coords.longitude;
             const now = Date.now();
-            if (now - lastUpdate > 10000) {  // Update every 10s
+            if (now - lastUpdate > 10000) {
                 updateLocalPosition(myLat, myLng);
                 lastUpdate = now;
             }
@@ -99,7 +99,7 @@ function joinRoom() {
     if (!roomCode) return alert('Enter room code.');
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
         const locations = snapshot.val() || {};
-        if (Object.keys(locations).length >= 4) return alert('Room full (max 4).');  // Increased to 4
+        if (Object.keys(locations).length >= 4) return alert('Room full (max 4).');
         document.getElementById('status').innerText = `Joined ${roomCode}. Sharing locations.`;
         startRoomTracking();
     }, { onlyOnce: true });
@@ -116,7 +116,7 @@ function startRoomTracking() {
             const loc = locations[key];
             const name = loc.name || `User ${index + 1}`;
             if (!markers[key]) {
-                const colors = ['blue', 'green', 'orange', 'purple'];  // For 4 users
+                const colors = ['blue', 'green', 'orange', 'purple'];
                 markers[key] = L.marker([loc.lat, loc.lng], { icon: L.icon({ iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${colors[index] || 'grey'}.png`, shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup(`${name}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`);
             } else {
                 markers[key].setLatLng([loc.lat, loc.lng]);
@@ -125,69 +125,53 @@ function startRoomTracking() {
             li.textContent = `${name}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`;
             deviceList.appendChild(li);
         });
-        // Removed auto-zoom: map.setView([locations[keys[0]].lat, locations[keys[0]].lng], 15);
-        Object.keys(markers).forEach(key => {
-            if (!keys.includes(key) && key !== 'me') {
-                map.removeLayer(markers[key]);
-                delete markers[key];
-            }
-        });
-        updatePaths(locations, keys);  // Draw paths between all users
+        updateRoutes(locations, keys);
     });
 
-    // On new user join, draw path to them
     onChildAdded(ref(database, roomCode + '/locations'), (snapshot) => {
         const data = snapshot.val();
         if (data.name !== myName) {
             alert(`${data.name} joined! Path highlighted.`);
-            drawPathToUser(data.lat, data.lng, data.name);  // Highlight path on join
+            drawRouteToUser(data.lat, data.lng, data.name);
         }
     });
 }
 
-// Draw paths between all users (highlighted streets)
-async function updatePaths(locations, keys) {
-    Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
-    polylines = {};
+// Update routes with routing machine for street highlighting
+function updateRoutes(locations, keys) {
+    Object.values(routes).forEach(route => map.removeControl(route));
+    routes = {};
     if (keys.length < 2) return;
-    const colors = ['red', 'purple', 'yellow', 'cyan'];  // For 4 paths
+    const colors = ['#0000FF', '#800080', '#FFFF00', '#00FFFF'];  // Blue, purple, yellow, cyan
     let colorIndex = 0;
     for (let i = 0; i < keys.length; i++) {
         for (let j = i + 1; j < keys.length; j++) {
             const key1 = keys[i], key2 = keys[j];
             const loc1 = locations[key1], loc2 = locations[key2];
-            try {
-                const response = await fetch(`http://router.project-osrm.org/route/v1/driving/${loc1.lng},${loc1.lat};${loc2.lng},${loc2.lat}?overview=full&geometries=geojson`);
-                const data = await response.json();
-                if (data.routes && data.routes[0]) {
-                    const route = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
-                    const color = colors[colorIndex % colors.length];
-                    polylines[`${key1}-${key2}`] = L.polyline(route, { color, weight: 5, opacity: 0.8 }).addTo(map).bindPopup(`Shortest route from ${loc1.name || 'User'} to ${loc2.name || 'User'} (${(data.routes[0].distance / 1000).toFixed(2)} km)`);
-                    colorIndex++;
-                }
-            } catch (error) {
-                console.error('Route error:', error);
-                // Fallback straight line if API fails
-                polylines[`${key1}-${key2}`] = L.polyline([[loc1.lat, loc1.lng], [loc2.lat, loc2.lng]], { color: 'gray', weight: 3, dashArray: '5, 5' }).addTo(map);
-            }
+            const routeId = `${key1}-${key2}`;
+            routes[routeId] = L.Routing.control({
+                waypoints: [L.latLng(loc1.lat, loc1.lng), L.latLng(loc2.lat, loc2.lng)],
+                router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+                lineOptions: { styles: [{ color: colors[colorIndex % colors.length], weight: 6, opacity: 0.8 }] },  // Thick, highlighted line
+                createMarker: () => null,  // No extra markers
+                addWaypoints: false
+            }).addTo(map);
+            colorIndex++;
         }
     }
 }
 
-// Draw path to a specific user (on join)
-async function drawPathToUser(lat, lng, name) {
-    try {
-        const response = await fetch(`http://router.project-osrm.org/route/v1/driving/${myLng},${myLat};${lng},${lat}?overview=full&geometries=geojson`);
-        const data = await response.json();
-        if (data.routes && data.routes[0]) {
-            const route = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
-            const polylineId = `path-to-${name}`;
-            if (polylines[polylineId]) map.removeLayer(polylines[polylineId]);
-            polylines[polylineId] = L.polyline(route, { color: 'green', weight: 6, opacity: 0.9 }).addTo(map).bindPopup(`Path to ${name} (${(data.routes[0].distance / 1000).toFixed(2)} km)`);
-        }
-    } catch (error) {
-        console.error('Path to user error:', error);
-    }
+// Draw route to new user with highlighting
+function drawRouteToUser(lat, lng, name) {
+    const routeId = `to-${name}`;
+    if (routes[routeId]) map.removeControl(routes[routeId]);
+    routes[routeId] = L.Routing.control({
+        waypoints: [L.latLng(myLat, myLng), L.latLng(lat, lng)],
+        router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+        lineOptions: { styles: [{ color: 'green', weight: 7, opacity: 0.9 }] },  // Prominent green highlight
+        createMarker: () => null,
+        addWaypoints: false
+    }).addTo(map);
 }
 
 // Leave room
@@ -199,9 +183,9 @@ function leaveRoom() {
     document.getElementById('status').innerText = 'Left room.';
     document.getElementById('devices').innerHTML = '';
     Object.values(markers).forEach(marker => map.removeLayer(marker));
-    Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
+    Object.values(routes).forEach(route => map.removeControl(route));
     markers = {};
-    polylines = {};
+    routes = {};
 }
 
 // Expose functions
