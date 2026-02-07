@@ -163,7 +163,7 @@ function startRoomTracking() {
     });
 }
 
-// Update routes with logging
+// Update routes with HTTPS OSRM
 async function updateRoutes(locations, keys) {
     console.log('Updating routes for keys:', keys);
     routes.forEach(route => route.remove());
@@ -180,7 +180,7 @@ async function updateRoutes(locations, keys) {
             const loc1 = locations[keys[i]], loc2 = locations[keys[j]];
             console.log(`Fetching route from ${loc1.lat},${loc1.lng} to ${loc2.lat},${loc2.lng}`);
             try {
-                const response = await fetch(`http://router.project-osrm.org/route/v1/driving/${loc1.lng},${loc1.lat};${loc2.lng},${loc2.lat}?overview=full&geometries=geojson`);
+                const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${loc1.lng},${loc1.lat};${loc2.lng},${loc2.lat}?overview=full&geometries=geojson`);
                 if (!response.ok) throw new Error(`OSRM failed: ${response.status}`);
                 const data = await response.json();
                 if (data.routes && data.routes[0]) {
