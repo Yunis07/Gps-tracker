@@ -23,7 +23,8 @@
 <body>
     <div class="container">
         <h1>Real-Time GPS Tracker (Offline Ready)</h1>
-        <p>Start tracking your location, then create or join a room to share live locations and paths. Download maps for offline use.</p>
+        <p>Enter your name, start tracking, then create or join a room to share locations. Names appear on markers.</p>
+        <input type="text" id="name" placeholder="Enter your name (e.g., John)" />
         <button onclick="startTracking()">Start Tracking (Grant Location Permission)</button>
         <button onclick="createRoom()">Create New Room</button>
         <input type="text" id="code" placeholder="Or enter room code to join" />
