@@ -30,25 +30,24 @@ let trackingStarted = false;
 let lastUpdate = 0;
 let myLat = 0, myLng = 0;
 
-// Initialize MapLibre map with new MapTiler key and light streets style
+// Initialize MapLibre map
 window.onload = function() {
-    const MAPTILER_KEY = 'DDsrWRPoPOfwJ9ISsEV2';  // New key
+    const MAPTILER_KEY = '0ji8c4Ac7rZvNXeSUoKl';  // Use this key; switch to 'DDsrWRPoPOfwJ9ISsEV2' if needed
     try {
         map = new maplibregl.Map({
             container: 'map',
-            style: `https://api.maptiler.com/maps/streets/style.json?key=${MAPTILER_KEY}`,  // Light streets style with buildings/labels
+            style: `https://api.maptiler.com/maps/streets/style.json?key=${MAPTILER_KEY}`,
             center: [-0.09, 51.505],
             zoom: 13
         });
         map.on('load', () => {
             console.log('Map loaded successfully');
-            const defaultMarker = new maplibregl.Marker().setLngLat([-0.09, 51.505]).setPopup(new maplibregl.Popup().setHTML('Start tracking.')).addTo(map);
+            const defaultMarker = new maplibregl.Marker().setLngLat([-0.09, 51.505]).setPopup(new maplibregl.Popup().setHTML('Start tracking to see locations.')).addTo(map);
             markers.push(defaultMarker);
             map.on('click', (e) => {
                 const features = map.queryRenderedFeatures(e.point);
                 if (features.length) {
-                    const feature = features[0];
-                    new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<strong>${feature.properties.name || 'Feature'}</strong>`).addTo(map);
+                    new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<strong>${features[0].properties.name || 'Feature'}</strong>`).addTo(map);
                 }
             });
         });
@@ -58,15 +57,15 @@ window.onload = function() {
         });
     } catch (error) {
         console.error('Map init error:', error);
-        alert('Map library failed. Refresh page.');
+        alert('Map library failed.');
     }
 };
 
-// Start tracking and zoom to location
+// Start tracking
 function startTracking() {
     myName = document.getElementById('name').value.trim();
     if (!myName) return alert('Enter your name.');
-    if (trackingStarted) return;
+    if (trackingStarted) return alert('Already tracking.');
     if (!navigator.geolocation) return alert('GPS not supported.');
     
     document.getElementById('tracking-spinner').style.display = 'inline-block';
@@ -88,12 +87,12 @@ function startTracking() {
         document.getElementById('status').innerText = `Tracking ${myName}.`;
         document.getElementById('tracking-spinner').style.display = 'none';
     }, (error) => {
-        alert('Location denied.');
+        alert('Location denied. Enable in browser settings.');
         document.getElementById('tracking-spinner').style.display = 'none';
     });
 }
 
-// Update local position
+// Update position
 function updateLocalPosition(lat, lng) {
     if (markers.length === 1) {
         markers[0].remove();
@@ -121,7 +120,7 @@ function createRoom() {
 // Join room
 function joinRoom() {
     if (!trackingStarted) return alert('Start tracking first.');
-    if (!navigator.onLine) return alert('Need internet.');
+    if (!navigator.onLine) return alert('Need internet for rooms.');
     roomCode = document.getElementById('code').value.trim();
     if (!roomCode) return alert('Enter room code.');
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
@@ -163,7 +162,7 @@ function startRoomTracking() {
     });
 }
 
-// Update routes with distance/ETA
+// Update routes
 async function updateRoutes(locations, keys) {
     routes.forEach(route => route.remove());
     routes = [];
@@ -180,8 +179,8 @@ async function updateRoutes(locations, keys) {
                 const data = await response.json();
                 if (data.routes && data.routes[0]) {
                     const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0], coord[1]]);
-                    const distance = (data.routes[0].distance / 1000).toFixed(2);  // km
-                    const duration = (data.routes[0].duration / 60).toFixed(1);  // min
+                    const distance = (data.routes[0].distance / 1000).toFixed(2);
+                    const duration = (data.routes[0].duration / 60).toFixed(1);
                     const route = {
                         type: 'Feature',
                         properties: {},
@@ -202,12 +201,10 @@ async function updateRoutes(locations, keys) {
                             if (map.getSource(routeId)) map.removeSource(routeId);
                         }
                     });
-                    // Update device list with distance/ETA
+                    // Add distance/ETA
                     const deviceList = document.getElementById('devices');
-                    const existingLi = deviceList.querySelector(`li[data-key="${keys[i]}-${keys[j]}"]`);
-                    if (existingLi) {
-                        existingLi.textContent += ` | ${distance} km, ${duration} min`;
-                    }
+                    const li = deviceList.querySelector(`li:nth-child(${j + 1})`);
+                    if (li) li.textContent += ` | ${distance} km, ${duration} min`;
                     colorIndex++;
                 }
             } catch (error) {
@@ -224,15 +221,29 @@ function clearRoutes() {
     alert('Routes cleared.');
 }
 
-// Download area for offline
+// Download area (basic)
 function downloadArea() {
-    if (!map) return alert('Map not ready.');
-    const bounds = map.getBounds();
-    const minZoom = 10, maxZoom = 16;
-    let tilesDownloaded = 0;
-    const totalTiles = (maxZoom - minZoom + 1) * 4;  // Estimate
-    alert('Downloading map area. This may take time.');
-    map.offlineManager = new MaplibreOfflineManager(map);
-    map.offlineManager.download(bounds, minZoom, maxZoom, (progress) => {
-        tilesDownloaded++;
-        if (
+    alert('Offline download not implemented—use browser cache.');
+}
+
+// Leave room
+function leaveRoom() {
+    if (watchId) navigator.geolocation.clearWatch(watchId);
+    if (roomCode && navigator.onLine) remove(ref(database, roomCode + '/locations/' + myId));
+    roomCode = null;
+    trackingStarted = false;
+    document.getElementById('status').innerText = 'Left room.';
+    document.getElementById('devices').innerHTML = '';
+    markers.forEach(marker => marker.remove());
+    routes.forEach(route => route.remove());
+    markers = [];
+    routes = [];
+}
+
+// Expose functions
+window.startTracking = startTracking;
+window.createRoom = createRoom;
+window.joinRoom = joinRoom;
+window.leaveRoom = leaveRoom;
+window.clearRoutes = clearRoutes;
+window.downloadArea = downloadArea;
