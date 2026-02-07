@@ -1,8 +1,8 @@
 // Import Firebase modules
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, remove, onChildAdded, onChildRemoved } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
+import { getDatabase, ref, set, onValue, remove, onChildAdded } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
 
-// Firebase config (from your details)
+// Firebase config
 const firebaseConfig = {
     apiKey: "AIzaSyCeZTrOMHaOPXla7H_YB9IvUrPASFAjPQw",
     authDomain: "real-07.firebaseapp.com",
@@ -24,9 +24,11 @@ let myId = Math.random().toString(36).substr(2, 9);
 let myName = '';
 let map;
 let markers = {};
+let polylines = {};
 let watchId = null;
 let trackingStarted = false;
 let lastUpdate = 0;
+let myLat = 0, myLng = 0;  // Store current position for paths
 
 // Initialize map
 window.onload = function() {
@@ -49,24 +51,23 @@ function startTracking() {
     if (trackingStarted) return;
     if (!navigator.geolocation) return alert('GPS not supported.');
     
-    document.getElementById('tracking-spinner').style.display = 'inline-block';
     navigator.geolocation.getCurrentPosition((position) => {
-        const lat = position.coords.latitude, lng = position.coords.longitude;
-        map.setView([lat, lng], 15);
-        updateLocalPosition(lat, lng);
+        myLat = position.coords.latitude;
+        myLng = position.coords.longitude;
+        updateLocalPosition(myLat, myLng);
         watchId = navigator.geolocation.watchPosition((pos) => {
+            myLat = pos.coords.latitude;
+            myLng = pos.coords.longitude;
             const now = Date.now();
-            if (now - lastUpdate > 10000) {  // Update every 10s to save data
-                updateLocalPosition(pos.coords.latitude, pos.coords.longitude);
+            if (now - lastUpdate > 10000) {  // Update every 10s
+                updateLocalPosition(myLat, myLng);
                 lastUpdate = now;
             }
         }, (error) => alert('GPS error: ' + error.message), { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 });
         trackingStarted = true;
         document.getElementById('status').innerText = `Tracking ${myName}. Low data mode.`;
-        document.getElementById('tracking-spinner').style.display = 'none';
     }, (error) => {
         alert('Location denied. Enable in settings.');
-        document.getElementById('tracking-spinner').style.display = 'none';
     });
 }
 
@@ -98,13 +99,13 @@ function joinRoom() {
     if (!roomCode) return alert('Enter room code.');
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
         const locations = snapshot.val() || {};
-        if (Object.keys(locations).length >= 3) return alert('Room full.');
+        if (Object.keys(locations).length >= 4) return alert('Room full (max 4).');  // Increased to 4
         document.getElementById('status').innerText = `Joined ${roomCode}. Sharing locations.`;
         startRoomTracking();
     }, { onlyOnce: true });
 }
 
-// Start room tracking with notifications
+// Start room tracking
 function startRoomTracking() {
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
         const locations = snapshot.val() || {};
@@ -115,7 +116,7 @@ function startRoomTracking() {
             const loc = locations[key];
             const name = loc.name || `User ${index + 1}`;
             if (!markers[key]) {
-                const colors = ['blue', 'green', 'orange'];
+                const colors = ['blue', 'green', 'orange', 'purple'];  // For 4 users
                 markers[key] = L.marker([loc.lat, loc.lng], { icon: L.icon({ iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${colors[index] || 'grey'}.png`, shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup(`${name}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`);
             } else {
                 markers[key].setLatLng([loc.lat, loc.lng]);
@@ -124,24 +125,69 @@ function startRoomTracking() {
             li.textContent = `${name}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`;
             deviceList.appendChild(li);
         });
-        if (keys.length > 0) map.setView([locations[keys[0]].lat, locations[keys[0]].lng], 15);
+        // Removed auto-zoom: map.setView([locations[keys[0]].lat, locations[keys[0]].lng], 15);
         Object.keys(markers).forEach(key => {
             if (!keys.includes(key) && key !== 'me') {
                 map.removeLayer(markers[key]);
                 delete markers[key];
             }
         });
+        updatePaths(locations, keys);  // Draw paths between all users
     });
 
-    // Notifications for joins/leaves
+    // On new user join, draw path to them
     onChildAdded(ref(database, roomCode + '/locations'), (snapshot) => {
         const data = snapshot.val();
-        if (data.name !== myName) alert(`${data.name} joined the room!`);
+        if (data.name !== myName) {
+            alert(`${data.name} joined! Path highlighted.`);
+            drawPathToUser(data.lat, data.lng, data.name);  // Highlight path on join
+        }
     });
-    onChildRemoved(ref(database, roomCode + '/locations'), (snapshot) => {
-        const data = snapshot.val();
-        if (data.name !== myName) alert(`${data.name} left the room.`);
-    });
+}
+
+// Draw paths between all users (highlighted streets)
+async function updatePaths(locations, keys) {
+    Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
+    polylines = {};
+    if (keys.length < 2) return;
+    const colors = ['red', 'purple', 'yellow', 'cyan'];  // For 4 paths
+    let colorIndex = 0;
+    for (let i = 0; i < keys.length; i++) {
+        for (let j = i + 1; j < keys.length; j++) {
+            const key1 = keys[i], key2 = keys[j];
+            const loc1 = locations[key1], loc2 = locations[key2];
+            try {
+                const response = await fetch(`http://router.project-osrm.org/route/v1/driving/${loc1.lng},${loc1.lat};${loc2.lng},${loc2.lat}?overview=full&geometries=geojson`);
+                const data = await response.json();
+                if (data.routes && data.routes[0]) {
+                    const route = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                    const color = colors[colorIndex % colors.length];
+                    polylines[`${key1}-${key2}`] = L.polyline(route, { color, weight: 5, opacity: 0.8 }).addTo(map).bindPopup(`Shortest route from ${loc1.name || 'User'} to ${loc2.name || 'User'} (${(data.routes[0].distance / 1000).toFixed(2)} km)`);
+                    colorIndex++;
+                }
+            } catch (error) {
+                console.error('Route error:', error);
+                // Fallback straight line if API fails
+                polylines[`${key1}-${key2}`] = L.polyline([[loc1.lat, loc1.lng], [loc2.lat, loc2.lng]], { color: 'gray', weight: 3, dashArray: '5, 5' }).addTo(map);
+            }
+        }
+    }
+}
+
+// Draw path to a specific user (on join)
+async function drawPathToUser(lat, lng, name) {
+    try {
+        const response = await fetch(`http://router.project-osrm.org/route/v1/driving/${myLng},${myLat};${lng},${lat}?overview=full&geometries=geojson`);
+        const data = await response.json();
+        if (data.routes && data.routes[0]) {
+            const route = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+            const polylineId = `path-to-${name}`;
+            if (polylines[polylineId]) map.removeLayer(polylines[polylineId]);
+            polylines[polylineId] = L.polyline(route, { color: 'green', weight: 6, opacity: 0.9 }).addTo(map).bindPopup(`Path to ${name} (${(data.routes[0].distance / 1000).toFixed(2)} km)`);
+        }
+    } catch (error) {
+        console.error('Path to user error:', error);
+    }
 }
 
 // Leave room
@@ -153,7 +199,9 @@ function leaveRoom() {
     document.getElementById('status').innerText = 'Left room.';
     document.getElementById('devices').innerHTML = '';
     Object.values(markers).forEach(marker => map.removeLayer(marker));
+    Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
     markers = {};
+    polylines = {};
 }
 
 // Expose functions
