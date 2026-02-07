@@ -23,25 +23,27 @@ let roomCode = null;
 let myId = Math.random().toString(36).substr(2, 9);
 let myName = '';
 let map;
-let markers = {};
-let polylines = {};
+let markers = [];
+let routes = [];
 let watchId = null;
 let trackingStarted = false;
 let lastUpdate = 0;
 let myLat = 0, myLng = 0;
 
-// Initialize map
+// Initialize MapLibre map with vector tiles for true street highlighting
 window.onload = function() {
-    try {
-        map = L.map('map').setView([51.505, -0.09], 13);
-        L.tileLayer('https://tile-{s}.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
-        L.marker([51.5, -0.09]).addTo(map).bindPopup('Start tracking to see locations.').openPopup();
-        console.log('Map ready');
-    } catch (error) {
-        alert('Map failed. Refresh.');
-    }
+    map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://demotiles.maplibre.org/style.json',  // Free vector style with roads
+        center: [-0.09, 51.505],
+        zoom: 13
+    });
+    map.on('load', () => {
+        console.log('MapLibre map loaded with vector roads');
+        // Add default marker
+        const defaultMarker = new maplibregl.Marker().setLngLat([-0.09, 51.505]).setPopup(new maplibregl.Popup().setHTML('Start tracking to see locations.')).addTo(map);
+        markers.push(defaultMarker);
+    });
 };
 
 // Start tracking
@@ -59,24 +61,29 @@ function startTracking() {
             myLat = pos.coords.latitude;
             myLng = pos.coords.longitude;
             const now = Date.now();
-            if (now - lastUpdate > 10000) {
+            if (now - lastUpdate > 10000) {  // Update every 10s for efficiency
                 updateLocalPosition(myLat, myLng);
                 lastUpdate = now;
             }
         }, (error) => alert('GPS error: ' + error.message), { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 });
         trackingStarted = true;
-        document.getElementById('status').innerText = `Tracking ${myName}.`;
+        document.getElementById('status').innerText = `Tracking ${myName}. Real-time updates active.`;
     }, (error) => {
-        alert('Location denied.');
+        alert('Location denied. Enable in browser settings.');
     });
 }
 
 // Update local position
 function updateLocalPosition(lat, lng) {
-    if (!markers['me']) {
-        markers['me'] = L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup(`${myName}: Your Location`).openPopup();
+    if (markers.length === 1) {  // Replace default marker
+        markers[0].remove();
+        markers = [];
+    }
+    if (markers.length === 0) {
+        const marker = new maplibregl.Marker({ color: 'red' }).setLngLat([lng, lat]).setPopup(new maplibregl.Popup().setHTML(`${myName}: Your Location`)).addTo(map);
+        markers.push(marker);
     } else {
-        markers['me'].setLatLng([lat, lng]);
+        markers[0].setLngLat([lng, lat]);
     }
     if (roomCode && navigator.onLine) {
         set(ref(database, roomCode + '/locations/' + myId), { lat, lng, name: myName, timestamp: Date.now() });
@@ -94,13 +101,13 @@ function createRoom() {
 // Join room
 function joinRoom() {
     if (!trackingStarted) return alert('Start tracking first.');
-    if (!navigator.onLine) return alert('Need internet.');
+    if (!navigator.onLine) return alert('Need internet for rooms.');
     roomCode = document.getElementById('code').value.trim();
     if (!roomCode) return alert('Enter room code.');
     onValue(ref(database, roomCode + '/locations'), (snapshot) => {
         const locations = snapshot.val() || {};
-        if (Object.keys(locations).length >= 4) return alert('Room full.');
-        document.getElementById('status').innerText = `Joined ${roomCode}.`;
+        if (Object.keys(locations).length >= 4) return alert('Room full (max 4).');
+        document.getElementById('status').innerText = `Joined ${roomCode}. Real-time tracking active.`;
         startRoomTracking();
     }, { onlyOnce: true });
 }
@@ -115,17 +122,17 @@ function startRoomTracking() {
         keys.forEach((key, index) => {
             const loc = locations[key];
             const name = loc.name || `User ${index + 1}`;
-            if (!markers[key]) {
-                const colors = ['blue', 'green', 'orange', 'purple'];
-                markers[key] = L.marker([loc.lat, loc.lng], { icon: L.icon({ iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${colors[index] || 'grey'}.png`, shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] }) }).addTo(map).bindPopup(`${name}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`);
+            if (!markers[index + 1]) {
+                const marker = new maplibregl.Marker({ color: ['blue', 'green', 'orange', 'purple'][index] }).setLngLat([loc.lng, loc.lat]).setPopup(new maplibregl.Popup().setHTML(`${name}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`)).addTo(map);
+                markers.push(marker);
             } else {
-                markers[key].setLatLng([loc.lat, loc.lng]);
+                markers[index + 1].setLngLat([loc.lng, loc.lat]);
             }
             const li = document.createElement('li');
             li.textContent = `${name}: Lat ${loc.lat.toFixed(4)}, Lng ${loc.lng.toFixed(4)}`;
             deviceList.appendChild(li);
         });
-        updateRoutes(locations, keys);  // Redraw routes dynamically
+        updateRoutes(locations, keys);  // Real-time route updates
     });
 
     onChildAdded(ref(database, roomCode + '/locations'), (snapshot) => {
@@ -136,30 +143,47 @@ function startRoomTracking() {
     });
 }
 
-// Draw/update dynamic routes (clears and redraws for shortest path)
+// Update routes with real-time street highlighting
 async function updateRoutes(locations, keys) {
-    // Clear old polylines
-    Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
-    polylines = {};
+    // Clear old routes
+    routes.forEach(route => route.remove());
+    routes = [];
     
     if (keys.length < 2) return;
     const colors = ['#0000FF', '#800080', '#FFFF00', '#00FFFF'];
     let colorIndex = 0;
     for (let i = 0; i < keys.length; i++) {
         for (let j = i + 1; j < keys.length; j++) {
-            const key1 = keys[i], key2 = keys[j];
-            const loc1 = locations[key1], loc2 = locations[key2];
-            const routeId = `${key1}-${key2}`;
+            const loc1 = locations[keys[i]], loc2 = locations[keys[j]];
             try {
                 const response = await fetch(`http://router.project-osrm.org/route/v1/driving/${loc1.lng},${loc1.lat};${loc2.lng},${loc2.lat}?overview=full&geometries=geojson`);
+                if (!response.ok) throw new Error('OSRM failed');
                 const data = await response.json();
                 if (data.routes && data.routes[0]) {
-                    const route = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
-                    polylines[routeId] = L.polyline(route, { color: colors[colorIndex % colors.length], weight: 8, opacity: 0.9 }).addTo(map).bindPopup(`Shortest route from ${loc1.name || 'User'} to ${loc2.name || 'User'} (${(data.routes[0].distance / 1000).toFixed(2)} km)`);
+                    const coordinates = data.routes[0].geometry.coordinates.map(coord => [coord[0], coord[1]]);
+                    const route = {
+                        type: 'Feature',
+                        properties: {},
+                        geometry: { type: 'LineString', coordinates }
+                    };
+                    map.addSource(`route-${keys[i]}-${keys[j]}`, { type: 'geojson', data: route });
+                    map.addLayer({
+                        id: `route-${keys[i]}-${keys[j]}`,
+                        type: 'line',
+                        source: `route-${keys[i]}-${keys[j]}`,
+                        layout: { 'line-join': 'round', 'line-cap': 'round' },
+                        paint: { 'line-color': colors[colorIndex % colors.length], 'line-width': 8, 'line-opacity': 0.9 }
+                    });
+                    routes.push({
+                        remove: () => {
+                            if (map.getLayer(`route-${keys[i]}-${keys[j]}`)) map.removeLayer(`route-${keys[i]}-${keys[j]}`);
+                            if (map.getSource(`route-${keys[i]}-${keys[j]}`)) map.removeSource(`route-${keys[i]}-${keys[j]}`);
+                        }
+                    });
                     colorIndex++;
                 }
             } catch (error) {
-                console.error('Route error:', error);
+                console.error('Route update failed:', error);
             }
         }
     }
@@ -167,8 +191,8 @@ async function updateRoutes(locations, keys) {
 
 // Clear routes
 function clearRoutes() {
-    Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
-    polylines = {};
+    routes.forEach(route => route.remove());
+    routes = [];
     alert('Routes cleared.');
 }
 
@@ -180,10 +204,10 @@ function leaveRoom() {
     trackingStarted = false;
     document.getElementById('status').innerText = 'Left room.';
     document.getElementById('devices').innerHTML = '';
-    Object.values(markers).forEach(marker => map.removeLayer(marker));
-    Object.values(polylines).forEach(polyline => map.removeLayer(polyline));
-    markers = {};
-    polylines = {};
+    markers.forEach(marker => marker.remove());
+    routes.forEach(route => route.remove());
+    markers = [];
+    routes = [];
 }
 
 // Expose functions
